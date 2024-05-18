@@ -1,0 +1,146 @@
+#include <Arduino.h>
+#include <vector>
+#include <WiFi.h>
+#include <Wire.h>
+#include <HTTPClient.h>
+#include <string.h>
+#include "SPI.h"
+#include <HTTPClient.h>
+#include "KBProTime.h"
+#include <PubSubClient.h>
+
+// #include "KB_initBoard.h"
+// #include "KB_music.h"
+// #include "KB_LDR.h"
+// #include "KB_LM73.h"
+// #include "KB_ht16k33.h"
+// #include "MCP7941x.h"
+
+// MCP7941x rtc = MCP7941x();
+
+// KB_board board = KB_board();
+// KB_music music = KB_music();
+// KB_LDR ldr = KB_LDR();
+// KB_LM73 lm73 = KB_LM73();
+// KB_8x16Matrix matrix = KB_8x16Matrix();
+
+
+//🚨-----------------------SERVER CONFIG-------------------------------
+  //🚨Wifi Connection
+  const char* ssid = "Triton136275"; //ชื่อ Wifi
+  const char* password = "Triton8708"; //Password Wifi
+
+  //🚨Google Script ID
+  const char* Script_ID = "AKfycbzunsdLB3P-WLyf6Lyu9225G3QTdgDrE_nXT2il6ampAaaeShbMJBZgT6HQXbcp8ItI";
+
+  //Host & https Sever
+  const char* host = "script.google.com";
+  const long  httpsPort = 443;
+  const int daylightOffset_sec =0;
+
+//Function---------------------------------------------------------------
+
+typedef int Number;
+typedef int Boolean;
+using namespace std;
+
+KBProTime kbprotime;
+String num_str1 = "";
+
+WiFiClient client;
+PubSubClient mqtt(client, "broker.hivemq.com", 1883);
+void callback(const MQTT::Publish& pub) {
+  String topic = String(pub.topic());
+  String payload = pub.payload_string();
+  if ((topic) == String("start")) {
+    Serial.println(String((payload)));
+    num_str1 = (payload);
+  }
+}
+
+void Http_Upto() {
+  HTTPClient http;
+  Serial.print("[HTTP] begin...\n");
+    //http addres
+    char URL_char[500] = "";
+    strcat(URL_char,"https://script.google.com/macros/s/");
+    strcat(URL_char,Script_ID);
+    strcat(URL_char,"/exec");
+    strcat(URL_char,"?s1=");
+    strcat(URL_char,"Connnected");
+    strcat(URL_char,"&s3=");
+    strcat(URL_char,num_str1.c_str());
+
+     String URL(URL_char);
+     Serial.print("Up to :");
+     Serial.println(URL_char);
+
+  http.begin(URL.c_str()); //HTTP
+
+  // start connection and send HTTP header
+  int httpCode = http.GET();
+
+  // httpCode will be negative on error
+  if (httpCode > 0) {
+    // HTTP header has been send and Server response header has been handled
+    // Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+    // Serial.print("[CONTENT]\n");
+
+    // file found at server
+    if (httpCode == HTTP_CODE_OK) {
+    //   String load = http.getString();
+    //   Serial.print("[Server]:");
+    //   Serial.println(load);
+    }
+  } else {
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+  http.end();
+}
+
+
+
+
+//-----------------------------------------------------------------------
+
+void setup() {
+  // board.begin();
+  // music.begin();
+  // lm73.begin();
+  // matrix.displayBegin();
+  // ldr.begin();
+  Serial.begin(115200);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  mqtt.set_callback(callback);
+  mqtt.connect(MQTT::Connect("CLIENT-E6AZ7GO9").set_auth("", ""));
+
+  mqtt.subscribe("start"); //Subscribe topic
+}
+void loop() {
+    if (WiFi.status() == WL_CONNECTED) { 
+        if (((int)digitalRead(KB_BUTTON1)) == 0) {
+        Http_Upto();
+        Serial.println("Sented!------------------");
+        }
+        else {
+        mqtt.loop();
+        Serial.println("num_str1 :" + num_str1);
+        delay(2000); 
+        }
+        delay(2000); 
+        }
+    else  {
+    Serial.println("connection lost, reconnect...");
+    WiFi.begin(ssid, password);
+    delay(500);
+  }
+}

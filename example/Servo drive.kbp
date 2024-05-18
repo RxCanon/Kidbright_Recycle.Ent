@@ -1,0 +1,52 @@
+#include <Arduino.h>
+#include <vector>
+#include <WiFi.h>
+#include <Wire.h>
+#include "SPI.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_LEDBackpack.h"
+
+#include "Adafruit_PWMServoDriver.h"
+
+#include "KB_initBoard.h"
+#include "KB_music.h"
+#include "KB_LDR.h"
+#include "KB_LM73.h"
+#include "KB_ht16k33.h"
+#include "MCP7941x.h"
+
+MCP7941x rtc = MCP7941x();
+
+KB_board board = KB_board();
+KB_music music = KB_music();
+KB_LDR ldr = KB_LDR();
+KB_LM73 lm73 = KB_LM73();
+KB_8x16Matrix matrix = KB_8x16Matrix();
+
+typedef int Number;
+typedef int Boolean;
+using namespace std;
+
+Adafruit_PWMServoDriver PCA9685_1 = Adafruit_PWMServoDriver(0x40, Wire1);
+
+void setup() {
+  board.begin();
+  music.begin();
+  lm73.begin();
+  matrix.displayBegin();
+  ldr.begin();
+
+  PCA9685_1.begin();
+  PCA9685_1.setPWMFreq(50);
+}
+void loop() {
+  PCA9685_1.setServo(1, 0);
+  matrix.printText(0, 0, String(String("0")));
+  delay(1000);
+  PCA9685_1.setServo(1, 90);
+  matrix.printText(0, 0, String(String("90")));
+  delay(1000);
+  PCA9685_1.setServo(1, 180);
+  matrix.printText(0, 0, String(String("180")));
+  delay(1000);
+}

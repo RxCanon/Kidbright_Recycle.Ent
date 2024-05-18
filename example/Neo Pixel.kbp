@@ -1,0 +1,90 @@
+#include <Arduino.h>
+#include <vector>
+#include <WiFi.h>
+#include <Wire.h>
+#include "SPI.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_LEDBackpack.h"
+
+#include "Adafruit_NeoPixel.h"
+
+#include "KB_initBoard.h"
+#include "KB_music.h"
+#include "KB_LDR.h"
+#include "KB_LM73.h"
+#include "KB_ht16k33.h"
+#include "MCP7941x.h"
+
+MCP7941x rtc = MCP7941x();
+
+KB_board board = KB_board();
+KB_music music = KB_music();
+KB_LDR ldr = KB_LDR();
+KB_LM73 lm73 = KB_LM73();
+KB_8x16Matrix matrix = KB_8x16Matrix();
+
+typedef int Number;
+typedef int Boolean;
+using namespace std;
+
+Number delayTime;
+#define PIN 23
+#define NUMPIXELS 8
+Adafruit_NeoPixel NeoPixel1 =
+    Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+void setup() {
+  board.begin();
+  music.begin();
+  lm73.begin();
+  matrix.displayBegin();
+  ldr.begin();
+
+  delayTime = 1000;
+
+  NeoPixel1.begin();
+
+  NeoPixel1.setBrightness(100);
+  NeoPixel1.show();
+
+  for (int clearPixel = 0; clearPixel < NeoPixel1.numPixels(); clearPixel++) {
+    NeoPixel1.setPixelColor(clearPixel, NeoPixel1.Color(0, 0, 0));
+    NeoPixel1.show();
+    delay(25);
+  }
+}
+void loop() {
+  for (uint16_t i = 0; i < NeoPixel1.numPixels(); i++) {
+    NeoPixel1.setPixelColor(i, NeoPixel1.Color(255, 255, 102));
+    NeoPixel1.show();
+    delay(25);
+  }
+  while (!((int)digitalRead(KB_BUTTON1))) {
+    NeoPixel1.setPixelColor(1, NeoPixel1.Color(255, 102, 102));
+    // NeoPixel1.show();
+    NeoPixel1.setPixelColor(2, NeoPixel1.Color(255, 102, 102));
+    // NeoPixel1.show();
+    NeoPixel1.setPixelColor(3, NeoPixel1.Color(255, 102, 102));
+    // NeoPixel1.show();
+    NeoPixel1.setPixelColor(4, NeoPixel1.Color(255, 102, 102));
+    // NeoPixel1.show();
+    NeoPixel1.setPixelColor(5, NeoPixel1.Color(255, 102, 102));
+    // NeoPixel1.show();
+    NeoPixel1.setPixelColor(6, NeoPixel1.Color(255, 102, 102));
+    NeoPixel1.show();
+    delay(40);
+    for (int clearPixel = 0; clearPixel < NeoPixel1.numPixels(); clearPixel++) {
+      NeoPixel1.setPixelColor(clearPixel, NeoPixel1.Color(0, 0, 0));
+      NeoPixel1.show();
+      delay(25);
+    }
+    delay(40);
+  }
+  while (!((int)digitalRead(KB_BUTTON2))) {
+    for (uint16_t i = 0; i < NeoPixel1.numPixels(); i++) {
+      NeoPixel1.setPixelColor(i, NeoPixel1.Color(51, 204, 0));
+      NeoPixel1.show();
+    //   delay(25);
+    }
+  }
+}
