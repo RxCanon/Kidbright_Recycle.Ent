@@ -1,0 +1,346 @@
+#include <Arduino.h>
+#include <vector>
+#include <WiFi.h>
+#include <Wire.h>
+#include "SPI.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_LEDBackpack.h"
+#include <HTTPClient.h> //เปิด http
+#include <string.h>//string
+#include "KBProTime.h"
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include "Adafruit_NeoPixel.h" //LED RGB Neo Pixel
+#include "Adafruit_PWMServoDriver.h"//Servo Drive
+
+#include "KB_initBoard.h"
+#include "KB_music.h"
+#include "KB_LDR.h"
+#include "KB_LM73.h"
+#include "KB_ht16k33.h"
+#include "MCP7941x.h"
+
+MCP7941x rtc = MCP7941x();
+
+KB_board board = KB_board();
+KB_music music = KB_music();
+KB_LDR ldr = KB_LDR();
+KB_LM73 lm73 = KB_LM73();
+KB_8x16Matrix matrix = KB_8x16Matrix();
+
+typedef int Number;
+typedef int Boolean;
+using namespace std;
+
+KBProTime kbprotime;
+
+//MQTT
+WiFiClient client;
+PubSubClient mqtt(client, "broker.hivemq.com", 1883);
+
+//Valuable------------------------------------------------------------
+#define Wifi_led 2
+#define IOT_led 14
+
+int data_start = 0;
+int data_ID = 0;
+int data_point = 0; //from micro Ai
+int data_end = 0;
+int data_type = 0;
+int type_sub = 0;
+
+int sum_point = 0;//pub
+
+//ปุ่มกด กันกดค้างส่งเข้า Server มากเกินไป
+unsigned long lastDebounceTime = 0;  // millis
+const long debounceDelay = 50;       // milliseconds
+
+//Neo Pixel LED RGB
+#define Neo_Pixel_pin 23
+#define NUMPIXELS 8
+Adafruit_NeoPixel NeoPixel1 =
+    Adafruit_NeoPixel(NUMPIXELS, Neo_Pixel_pin, NEO_GRB + NEO_KHZ800);
+
+//Motor (H Bridge)
+#define motor_1 19
+#define motor_2 23
+
+//Servo Drive I2C
+#define servo_gate_channel 0
+#define servo_sort_out_channel 1
+
+Adafruit_PWMServoDriver PCA9685_1 = Adafruit_PWMServoDriver(0x40, Wire1);
+
+//Cheking Status
+unsigned long lastWiFiCheckTime = 0;
+unsigned long lastMQTTCheckTime = 0;
+const unsigned long wifiCheckInterval = 5000; // ตรวจสอบ Wi-Fi ทุกๆ 5 วินาที
+const unsigned long mqttCheckInterval = 10000; // ตรวจสอบ MQTT ทุกๆ 10 วินาที
+
+//🚨-----------------------SERVER CONFIG-------------------------------
+  //🚨Wifi Connection
+  const char* ssid = "Triton136275"; //ชื่อ Wifi
+  const char* password = "Triton8708"; //Password Wifi
+
+  //🚨Google Script ID
+  const char* Script_ID = "AKfycbxr6FyKoy09sKIdHQFeIv2e0z3VlQE_hCA_oU7Ag4ZXM-Hn5Qa6xbsmH-7VbNSMBe4";
+
+//-----------------------------------------------------------------------
+//Connect With wifi
+void wifi_connect(){
+    WiFi.begin(ssid,password);
+    while (WiFi.status() != WL_CONNECTED) {\
+        matrix.drawBitmap(0, 0, (uint8_t *)"\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x6\x6\x0");
+        Serial.print(".");
+        digitalWrite(Wifi_led,HIGH);
+        delay(300);
+        matrix.drawBitmap(0, 0, (uint8_t *)"\x0\x0\x0\x0\x0\x0\x0\x0\x0\x6\x6\x0\x0\x0\x0\x0");
+        Serial.print(".");
+        digitalWrite(Wifi_led,LOW);
+        delay(300);
+        matrix.drawBitmap(0, 0, (uint8_t *)"\x0\x0\x0\x0\x0\x6\x6\x0\x0\x0\x0\x0\x0\x0\x0\x0");
+        Serial.print(".");
+        digitalWrite(Wifi_led,HIGH);
+        delay(300);
+        matrix.drawBitmap(0, 0, (uint8_t *)"\x0\x6\x6\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0");
+        Serial.print(".");
+        digitalWrite(Wifi_led,LOW);
+        delay(300);
+    }
+    kbprotime.sync();
+    digitalWrite(Wifi_led,HIGH);
+    Serial.println("WiFi connected");
+    matrix.printText(0, 0, " ");
+    matrix.drawBitmap(0, 0,(uint8_t*)"\x0\x0\x10\x20\x48\x90\xa4\xa9\xa9\xa4\x90\x48\x20\x10\x0\x0");
+    delay(5000);
+}
+//MQTT Callback Varuable and data Resive from MQTT
+void MQTT_callback(const MQTT::Publish& pub){
+  String topic = String(pub.topic());
+  String payload = pub.payload_string();
+  if ((topic) == "recycle-start")
+  {
+ data_start = (payload).toInt();
+  // matrix.printText(0, 0, String(data_start));
+  }
+  if ((topic) == "recycle-ID")
+  {
+  data_ID = (payload).toInt();
+  // matrix.printText(0, 0, String(data_ID));
+  }
+  if ((topic) == "recycle-end")
+  {
+  data_end = (payload).toInt();
+  // matrix.printText(0, 0, String(data_end));
+  }
+  if ((topic) == "recycle-type") //case 1 : Can , case 2 : small bottom , case 3 : large bottom
+  {
+  type_sub = 1;
+  switch((payload).toInt()){
+    case 1:
+      data_point = 80;
+      break;
+    case 2:
+      data_point = 50;
+      break;
+    case 3:
+      data_point = 100;
+      break;
+  }
+  // matrix.printText(0, 0, String(data_point));
+  }
+  
+}
+
+//MQTT Setting
+void MQTT_setup(){
+  mqtt.set_callback(MQTT_callback);
+  mqtt.connect(MQTT::Connect("CLIENT-E6AZ7GO9").set_auth("", ""));
+  
+  //Subscribe Name Topic
+  mqtt.subscribe("recycle-start");
+  mqtt.subscribe("recycle-ID");
+  // mqtt.subscribe("recycle-point");
+  mqtt.subscribe("recycle-end");
+  mqtt.subscribe("recycle-type");
+}
+
+//Up to google Sheet void
+void upto_sheet(){
+    HTTPClient http;
+    //http addres
+        char URL_char[350];
+        int len = snprintf(URL_char, sizeof(URL_char), "https://script.google.com/macros/s/%s/exec?s1=%d&s2=%d", Script_ID, data_ID,sum_point);
+        String URL(URL_char);
+
+        http.begin(URL.c_str()); //Start Server
+
+        //Error Check
+        int httpCode = http.GET();
+        // HTTP header has been send and Server response header has been handled
+        // Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+        // Serial.print("[CONTENT]\n");
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK) {
+            String payload = http.getString();
+            Serial.print("[Server]:");
+            Serial.println(payload);
+          }
+        else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        }
+  http.end(); //ปิด server
+}
+
+//NEO Pixel (LED RGB)
+  void led_clear(){
+    NeoPixel1.setPixelColor(1, NeoPixel1.Color(0,0,0));
+    NeoPixel1.setPixelColor(2, NeoPixel1.Color(0,0,0));
+    NeoPixel1.setPixelColor(3, NeoPixel1.Color(0,0,0));
+    NeoPixel1.setPixelColor(4, NeoPixel1.Color(0,0,0));
+    NeoPixel1.setPixelColor(5, NeoPixel1.Color(0,0,0));
+    NeoPixel1.setPixelColor(6, NeoPixel1.Color(0,0,0));
+    NeoPixel1.show();
+  }
+  void led_show(int r,int g,int b){
+    NeoPixel1.setPixelColor(1, NeoPixel1.Color(r,g,b));
+    NeoPixel1.setPixelColor(2, NeoPixel1.Color(r,g,b));
+    NeoPixel1.setPixelColor(3, NeoPixel1.Color(r,g,b));
+    NeoPixel1.setPixelColor(4, NeoPixel1.Color(r,g,b));
+    NeoPixel1.setPixelColor(5, NeoPixel1.Color(r,g,b));
+    NeoPixel1.setPixelColor(6, NeoPixel1.Color(r,g,b));
+    NeoPixel1.show();
+  }
+  void led_blinker(int r,int g,int b,int delay_blinker){
+    led_show(r,g,b);
+    delay(delay_blinker);
+    led_clear();
+    delay(delay_blinker);
+  }
+
+//Motor Drive H Bridge
+void motor_drive(char direction){ // S = Stop , F = Forward , B = Backward
+  switch(direction){
+    case 'S':
+      // matrix.printText(0, 0, "0");
+      digitalWrite(motor_2, 1);
+      digitalWrite(motor_1, 1);
+      break;
+    case 'F':
+      // matrix.printText(0, 0, "+");
+      digitalWrite(motor_2, 0);
+      delay(500);
+      digitalWrite(motor_1, 1);
+      break;
+    case 'B':
+      // matrix.printText(0, 0,"-");
+      digitalWrite(motor_1, 0);
+      delay(500);
+      digitalWrite(motor_2, 1);
+      break;
+  }
+}
+
+//Servo Drive
+void servo_gate(int status){// 1 = ON ,0 = OFF
+  switch(status){
+    case 1:
+      PCA9685_1.setServo(servo_gate_channel, 90);
+      break;
+    case 0:
+      PCA9685_1.setServo(servo_gate_channel, 0);
+      break;
+  }
+}
+void servo_sort_out(int ty){// 1 = Can , 2 = bottom
+  switch(ty){
+    case 1:
+      PCA9685_1.setServo(servo_sort_out_channel, 40);
+      break;
+    case 2:
+      PCA9685_1.setServo(servo_sort_out_channel, 0);
+      break;
+  }
+}
+//---------------------------------------------------------------------------------------------------
+void setup() {
+  board.begin();
+  music.begin();
+  lm73.begin();
+  matrix.displayBegin();
+  ldr.begin();
+  //pinmode-------------------
+  pinMode(Wifi_led,OUTPUT);
+  Serial.begin(115200);
+
+  NeoPixel1.begin();
+
+  NeoPixel1.setBrightness(100);
+  NeoPixel1.show();
+
+  wifi_connect(); //connect wifi
+  MQTT_setup(); //connect mqtt
+  digitalWrite(IOT_led,HIGH);
+}
+void loop(){
+  //Status
+    unsigned long currentTime = millis();
+    // ตรวจสอบการเชื่อมต่อ Wi-Fi
+    if (currentTime - lastWiFiCheckTime >= wifiCheckInterval) 
+    {
+      lastWiFiCheckTime = currentTime;
+      if (WiFi.status() != WL_CONNECTED) 
+      {
+        Serial.println("WiFi disconnected");
+        digitalWrite(Wifi_led, LOW); // ปิด LED
+        wifi_connect();
+        delay(300);
+      }
+      else {
+        Serial.println("WiFi connected");
+        // ดำเนินการเมื่อ Wi-Fi เชื่อมต่อ
+        digitalWrite(Wifi_led, HIGH); // เปิด LED
+      }
+      
+    }
+    if (currentTime - lastMQTTCheckTime >= mqttCheckInterval) 
+      {
+      lastMQTTCheckTime = currentTime;
+
+      if (!client.connected()) {
+        Serial.println("MQTT disconnected");
+        digitalWrite(IOT_led, LOW); // ปิด LED
+        MQTT_setup();
+        delay(300);
+      }
+      else {
+        Serial.println("MQTT connected");
+        digitalWrite(IOT_led, HIGH); // เปิด LED
+          }
+      }
+  mqtt.loop();
+  led_blinker(255,255,102,200);
+  while(data_start)
+  {
+      mqtt.loop();
+      led_blinker(124,252,0,150);
+      if (type_sub){
+      sum_point += data_point;
+      mqtt.publish("recycle-point",String(sum_point));
+      matrix.printText(0, 0, String(sum_point));
+      delay(200);
+      type_sub = 0;}
+      if (data_end)
+      {
+        if (millis() - lastDebounceTime > debounceDelay) 
+        {
+        led_show(250,128,114);
+        upto_sheet();
+        lastDebounceTime = millis();
+        }
+        data_start = 0;
+      }
+  }
+  delay(100);
+}
